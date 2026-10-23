@@ -176,7 +176,7 @@ class DesklibBackend:
     def __init__(self, device=None):
         import torch
         import torch.nn as nn
-        from transformers import AutoModel, AutoTokenizer, PretrainedConfig, PreTrainedModel
+        from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
         cfg = MODELS["desklib"]
         self._torch = torch
@@ -186,7 +186,7 @@ class DesklibBackend:
         self._lock = threading.Lock()
 
         class DesklibAIDetectionModel(PreTrainedModel):
-            config_class = PretrainedConfig
+            config_class = cast(Any, AutoConfig)
             all_tied_weights_keys = {}
 
             def __init__(self, config):

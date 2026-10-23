@@ -1,6 +1,6 @@
 [project]
 name        = "houtini-ai"
-version     = "1.0.1"
+version     = "1.0.2"
 description = "Per-sentence AI-text detection with pattern diagnostics — CLI."
 authors     = [{ name = "Richard Baxter", email = "richard@houtini.com" }]
 readme      = "README.md"

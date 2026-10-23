@@ -1,4 +1,8 @@
-# KpihX-Labs 1.0.1
+# KpihX-Labs 1.0.2
+
+- Preserve AutoConfig checkpoint dispatch at runtime while correcting its static typing.
+
+## 1.0.1
 
 - Preserve upstream MIT attribution and full Git history.
 - Publish and expose `houtini-ai` with the `src/ai_detect` package and uv_build.
