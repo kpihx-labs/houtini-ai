@@ -2,7 +2,35 @@
   <img src="https://raw.githubusercontent.com/houtini-ai/ai-detect/main/assets/logo.png" width="120" height="120" alt="ai-detect" />
 </div>
 
-# ai-detect - an open source AI detector that runs on your own machine
+# houtini-ai - local AI text detection
+
+## KpihX-Labs CLI distribution
+
+This MIT-licensed adaptation retains Richard Baxter / Houtini's implementation and
+history: https://github.com/houtini-ai/ai-detect.
+The PyPI distribution and executable are `houtini-ai`; the Python package is `ai_detect`.
+The build backend is `uv_build`, the source layout is `src/ai_detect`, and no MCP
+server is shipped by this adaptation.
+
+From a checkout, use `make uv-link` (XPU wheels by default) or
+`make uv-link UV_EXTRA=cpu`. Run `houtini-ai document.txt --json`.
+For a generic CPU installation from PyPI, use
+`uv tool install 'houtini-ai[cpu]' --index https://download.pytorch.org/whl/cpu`.
+For Intel wheels from PyPI, use
+`uv tool install 'houtini-ai[xpu]' --index https://download.pytorch.org/whl/xpu`.
+Explicit wheel selection is necessary: uv's source-index configuration is not
+embedded in wheel dependency metadata. Installing XPU wheels alone does not prove
+that the CLI's device selector actually executes inference on XPU.
+
+`make check` runs network-free tests, compilation, Ruff and Pyright.
+`make uv-build` builds a wheel and sdist, `make uv-publish` publishes them, and
+`make push` (also `make puhsb`) pushes the current branch to `github` and `gitlab`.
+Model files are downloaded from Hugging Face on first inference; they are not
+bundled in the PyPI wheel. Results go to stdout and load messages to stderr.
+Scores and pattern diagnostics are not proof of authorship or plagiarism.
+
+The remaining upstream documentation is historical: its MCP instructions and
+`ai-detect` command names do not describe this CLI-only adaptation.
 
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-8b5cf6?style=flat-square)](https://modelcontextprotocol.io)
 [![Model](https://img.shields.io/badge/model-DeBERTa--v3-5b5fff?style=flat-square)](https://huggingface.co/desklib/ai-text-detector-v1.01)

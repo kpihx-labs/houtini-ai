@@ -15,9 +15,11 @@ Two backends share one interface (`score(sentences) -> list[float]`, each a
 pattern diagnostics, and returns an aggregate report.
 """
 
+import importlib
 import os
 import sys
 import threading
+from typing import Any, cast
 
 from .patterns import (
     calculate_sdsl,
@@ -109,7 +111,10 @@ def preload_dependencies():
     # use so those submodules import now rather than mid-request.
     try:
         from transformers import (  # noqa: F401
-            AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel,
+            AutoConfig,
+            AutoModel,
+            AutoTokenizer,
+            PreTrainedModel,
         )
     except Exception:
         pass
@@ -171,7 +176,7 @@ class DesklibBackend:
     def __init__(self, device=None):
         import torch
         import torch.nn as nn
-        from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
+        from transformers import AutoModel, AutoTokenizer, PretrainedConfig, PreTrainedModel
 
         cfg = MODELS["desklib"]
         self._torch = torch
@@ -181,7 +186,7 @@ class DesklibBackend:
         self._lock = threading.Lock()
 
         class DesklibAIDetectionModel(PreTrainedModel):
-            config_class = AutoConfig
+            config_class = PretrainedConfig
             all_tied_weights_keys = {}
 
             def __init__(self, config):
@@ -191,6 +196,8 @@ class DesklibBackend:
                 self.init_weights()
 
             def forward(self, input_ids, attention_mask=None, labels=None):
+                if attention_mask is None:
+                    attention_mask = torch.ones_like(input_ids)
                 outputs = self.model(input_ids, attention_mask=attention_mask)
                 last_hidden_state = outputs[0]
                 mask = attention_mask.unsqueeze(-1).expand(
@@ -208,7 +215,7 @@ class DesklibBackend:
         dtype = torch.float32
         if self.device.type == "cuda" and torch.cuda.is_bf16_supported():
             dtype = torch.bfloat16
-        self.model = DesklibAIDetectionModel.from_pretrained(cfg["repo"], dtype=dtype)
+        self.model = cast(Any, DesklibAIDetectionModel.from_pretrained(cfg["repo"], dtype=dtype))
         self.model.to(self.device).eval()
         print(f"Model loaded on {self.device} ({cfg['label']})", file=sys.stderr)
 
@@ -245,7 +252,7 @@ class LightBackend:
 
     def __init__(self, device=None):
         import numpy as np
-        import onnxruntime as ort
+        ort = importlib.import_module("onnxruntime")
         from huggingface_hub import hf_hub_download
         from transformers import AutoTokenizer
 
@@ -394,7 +401,7 @@ def classify_text(text, model=DEFAULT_MODEL, device=None, detector=None):
             "text_metrics": calculate_sdsl([]), "pattern_totals": {},
         }
 
-    results = [None] * len(sentences)
+    results: list[Any] = [None] * len(sentences)
     scoreable, scoreable_indices = [], []
     for i, s in enumerate(sentences):
         if len(s.split()) < MIN_WORDS:
@@ -410,7 +417,7 @@ def classify_text(text, model=DEFAULT_MODEL, device=None, detector=None):
     all_probs = []
     if scoreable:
         probs = detector.score(scoreable)
-        for s, ai_prob, idx in zip(scoreable, probs, scoreable_indices):
+        for s, ai_prob, idx in zip(scoreable, probs, scoreable_indices, strict=True):
             ai_prob = float(ai_prob)
             human_prob = 1.0 - ai_prob
             label = "AI" if ai_prob >= 0.5 else "Human"

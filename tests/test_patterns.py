@@ -13,13 +13,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from ai_detect.detector import is_model_cached, verdict  # noqa: E402
 from ai_detect.patterns import (  # noqa: E402
     calculate_sdsl,
     count_pattern_totals,
     diagnose_sentence,
     sent_tokenize,
 )
-from ai_detect.detector import is_model_cached, verdict  # noqa: E402
 
 
 def _patterns(text):

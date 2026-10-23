@@ -8,6 +8,7 @@ so install issues are easy to diagnose.
     python scripts/check_env.py
 """
 
+import importlib
 import sys
 
 
@@ -16,7 +17,7 @@ def line(label, value):
 
 
 def main():
-    print("ai-detect environment check")
+    print("houtini-ai environment check")
     print("-" * 40)
     line("Python", sys.version.split()[0])
     line("Executable", sys.executable)
@@ -25,28 +26,25 @@ def main():
         import torch
         line("torch", torch.__version__)
         line("CUDA available", torch.cuda.is_available())
+        line("XPU available", torch.xpu.is_available())
         if torch.cuda.is_available():
             line("GPU", torch.cuda.get_device_name(0))
     except ImportError:
-        line("torch", "NOT INSTALLED  (pip install torch)")
+        line("torch", "NOT INSTALLED (make install-xpu or make install-cpu)")
 
     try:
         import transformers
         line("transformers", transformers.__version__)
     except ImportError:
-        line("transformers", "NOT INSTALLED  (pip install transformers)")
+        line("transformers", "NOT INSTALLED (uv sync)")
 
     try:
-        import onnxruntime as ort
+        ort = importlib.import_module("onnxruntime")
         line("onnxruntime", f"{ort.__version__}  providers={ort.get_available_providers()}")
     except ImportError:
         line("onnxruntime", "not installed (only needed for --model light)")
 
-    try:
-        import mcp  # noqa: F401
-        line("mcp", "available (MCP server ready)")
-    except ImportError:
-        line("mcp", "NOT INSTALLED  (pip install mcp)")
+    line("Interface", "CLI only")
 
     print("-" * 40)
     print("Default model : desklib/ai-text-detector-v1.01 (~1.7 GB, first run downloads it)")

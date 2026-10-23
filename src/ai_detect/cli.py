@@ -64,7 +64,7 @@ def print_results(data, label=""):
 
 def _read_source(path_or_text):
     if os.path.isfile(path_or_text):
-        with open(path_or_text, "r", encoding="utf-8") as f:
+        with open(path_or_text, encoding="utf-8") as f:
             return f.read()
     return path_or_text
 
@@ -96,7 +96,7 @@ def main(argv=None):
     _force_utf8_output()
 
     parser = argparse.ArgumentParser(
-        prog="ai-detect",
+        prog="houtini-ai",
         description="Per-sentence AI text detection with pattern diagnostics.",
     )
     parser.add_argument("--file", "-f", help="Path to text file")
@@ -117,7 +117,7 @@ def main(argv=None):
     if args.compare:
         all_results = []
         for fp in args.compare:
-            with open(fp, "r", encoding="utf-8") as f:
+            with open(fp, encoding="utf-8") as f:
                 text = f.read()
             data = classify_text(text, **opts)
             if args.json:

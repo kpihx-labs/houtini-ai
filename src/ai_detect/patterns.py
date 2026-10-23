@@ -206,7 +206,7 @@ def calculate_sdsl(sentences):
     if n < 2 or mean == 0:
         return {"mean": round(mean, 1), "stddev": 0, "cv": 0, "verdict": "too short to measure"}
 
-    variance = sum((l - mean) ** 2 for l in lengths) / n
+    variance = sum((length - mean) ** 2 for length in lengths) / n
     stddev = math.sqrt(variance)
     cv = stddev / mean
 
