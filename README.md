@@ -34,7 +34,6 @@ Scores and pattern diagnostics are not proof of authorship or plagiarism.
 The detector description below retains upstream context; operational examples
 use UV and the CLI-only `houtini-ai` command.
 
-[![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-8b5cf6?style=flat-square)](https://modelcontextprotocol.io)
 [![Model](https://img.shields.io/badge/model-DeBERTa--v3-5b5fff?style=flat-square)](https://huggingface.co/desklib/ai-text-detector-v1.01)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.9-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -88,10 +87,10 @@ Each flag comes with a plain-English rewrite suggestion, so the tool doubles as 
 |---|---|---|
 | Model | DeBERTa-v3-large, 304M | RoBERTa-base int8, ONNX |
 | Download | **~1.7 GB**, once | **~126 MB**, once |
-| Runtime | PyTorch (CPU or CUDA) | ONNX Runtime (CPU, or GPU via DirectML/CUDA) |
+| Runtime | PyTorch (CUDA, XPU or CPU) | ONNX Runtime (CPU, or GPU via DirectML/CUDA) |
 | Best for | the calibrated reference score | a fast, small triage pass |
 
-`desklib` is the one the pattern research was built on and the one I trust for an absolute score. `light` is smaller and quicker to install and it runs hotter — it over-flags a bit — so treat it as a fast first look rather than the final word. Same CLI, same MCP tools, just pass `--model light`.
+`desklib` is the one the pattern research was built on and the one I trust for an absolute score. `light` is smaller and quicker to install and it runs hotter — it over-flags a bit — so treat it as a fast first look rather than the final word. Use the same CLI and pass `--model light`.
 
 ## Why a local detector rather than a hosted one
 

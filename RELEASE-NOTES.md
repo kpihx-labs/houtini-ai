@@ -1,4 +1,9 @@
-# KpihX-Labs 1.1.0
+# KpihX-Labs 1.1.1
+
+- Remove residual MCP branding and the obsolete upstream requirements manifest.
+- Align all public runtime documentation with CUDA, XPU and CPU support.
+
+## 1.1.0
 
 - Add explicit `--device xpu` support for DeBERTa inference.
 - Set `auto` device selection to CUDA, then Intel XPU, then CPU.

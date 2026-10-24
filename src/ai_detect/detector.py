@@ -101,12 +101,10 @@ def resolve_torch_device(pref=None):
 def preload_dependencies():
     """Import the heavy backend libraries in the calling (ideally main) thread.
 
-    Importing numpy / onnxruntime / torch / transformers for the FIRST time from
-    inside a running MCP stdio server — whether in the event-loop thread or a
-    worker thread it dispatches to — can deadlock on the import machinery. Calling
-    this once at server startup, before mcp.run(), makes every later import a cheap
-    sys.modules cache hit, so model loads during a request no longer hang. Missing
-    optional deps (e.g. onnxruntime when 'light' isn't installed) are ignored.
+    Importing numpy / onnxruntime / torch / transformers for the first time can
+    be expensive. Calling this before a batch of local CLI invocations makes later
+    imports cheap ``sys.modules`` cache hits. Missing optional dependencies (for
+    example onnxruntime when ``light`` is not installed) are ignored.
     """
     import importlib
     for mod in ("numpy", "torch", "onnxruntime", "huggingface_hub"):
@@ -187,9 +185,8 @@ class DesklibBackend:
 
         cfg = MODELS["desklib"]
         self._torch = torch
-        # One inference at a time per loaded model: the MCP server can run several
-        # detections concurrently, and a single device serialises the work anyway —
-        # sharing it without a lock just risks overlapping batches on one GPU.
+        # One inference at a time per loaded model. A single accelerator serializes
+        # work anyway, so sharing it without a lock risks overlapping batches.
         self._lock = threading.Lock()
 
         class DesklibAIDetectionModel(PreTrainedModel):
@@ -347,11 +344,9 @@ def is_model_cached(model_name):
 
 
 _DETECTOR_CACHE = {}
-# Guards construction only. The MCP server runs detections in worker threads, so
-# two concurrent first calls for the same model would otherwise both miss the cache
-# and each load a ~1.7 GB copy onto the device — doubling VRAM for no reason, or
-# OOMing outright. A per-key lock lets a second model load in parallel with the
-# first; only same-key callers queue.
+# Guards construction only. Concurrent callers can otherwise both miss the cache
+# and load a ~1.7 GB copy onto one device. A per-key lock lets a second model load
+# in parallel with the first; only same-key callers queue.
 _DETECTOR_LOCKS = {}
 _DETECTOR_LOCKS_GUARD = threading.Lock()
 

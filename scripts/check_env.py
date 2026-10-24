@@ -2,7 +2,7 @@
 """
 Environment doctor for ai-detect.
 
-Reports Python, PyTorch/CUDA, Transformers, ONNX Runtime and MCP availability
+Reports Python, PyTorch accelerator, Transformers and ONNX Runtime availability
 so install issues are easy to diagnose.
 
     python scripts/check_env.py
