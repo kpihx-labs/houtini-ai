@@ -1,4 +1,10 @@
-# KpihX-Labs 1.0.2
+# KpihX-Labs 1.0.3
+
+- Include the unchanged original MIT notice and model-license notices in both archives.
+- Add byte-for-byte distribution-notice tests and exclude editor backups.
+- Update documentation and runtime hints to UV and the current CLI-only interface.
+
+## 1.0.2
 
 - Preserve AutoConfig checkpoint dispatch at runtime while correcting its static typing.
 

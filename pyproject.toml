@@ -1,11 +1,12 @@
 [project]
 name        = "houtini-ai"
-version     = "1.0.2"
+version     = "1.0.3"
 description = "Per-sentence AI-text detection with pattern diagnostics — CLI."
 authors     = [{ name = "Richard Baxter", email = "richard@houtini.com" }]
 readme      = "README.md"
 license     = "MIT"
 requires-python = ">=3.12"
+license-files = ["LICENSE"]
 
 dependencies = [
     "huggingface-hub>=2.2.0",
@@ -15,7 +16,7 @@ dependencies = [
 
 # ── Hardware extras (mutually exclusive) ─────────────────────────────────────
 # Usage: uv sync --extra cpu / --extra xpu / --extra cuda
-# Tool:  uv tool install ai-detect[cpu] / [xpu] / [cuda]
+# Tool: uv tool install 'houtini-ai[xpu]' --index https://download.pytorch.org/whl/xpu
 
 [project.optional-dependencies]
 cpu = [
@@ -95,6 +96,8 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "ai_detect"
+source-include = ["Makefile", "tests/**", "scripts/**", "RELEASE-NOTES.md"]
+source-exclude = ['*\~', "*.bak"]
 
 # ── Development dependencies ─────────────────────────────────────────────────
 [dependency-groups]

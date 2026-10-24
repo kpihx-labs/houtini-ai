@@ -7,7 +7,7 @@ The finding underneath all of it: **detectors have learned what clean, balanced,
 **Tested:** 70+ paired sentence variations, February 2026
 **Model:** desklib/ai-text-detector-v1.01 (DeBERTa-v3-large, 304M parameters, RAID benchmark #1)
 **Previous model:** dejanseo/ai-cop (DeBERTa-v3-small fine-tune) — replaced 2026-02-16
-**Tool:** `ai-detect` (see the [README](../README.md)) — run any of these yourself
+**Tool:** `houtini-ai` (see the [README](../README.md)) - run any of these yourself
 
 ## How the tests were run
 
@@ -86,8 +86,8 @@ It also isn't a verdict engine. A confident writer who contracts their verbs sai
 ## Checking your own text
 
 ```bash
-pip install .
-ai-detect --file draft.md
+make uv-link
+houtini-ai --file draft.md
 ```
 
 Every sentence is scored, and every flagged one comes back with the pattern that triggered it and a plain rewrite. The full tool, the model choices and the privacy position are in the [README](../README.md).

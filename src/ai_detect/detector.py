@@ -310,7 +310,7 @@ def _onnx_providers(ort, device):
     chosen = [p for p in gpu_order if p in available]
     if pref in ("cuda", "gpu") and not chosen:
         print("Requested GPU but no GPU execution provider is installed "
-              "(try: pip install onnxruntime-directml) — using CPU.", file=sys.stderr)
+              "(configure the matching ONNX provider through UV) - using CPU.", file=sys.stderr)
     return chosen + ["CPUExecutionProvider"]
 
 

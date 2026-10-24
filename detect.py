@@ -3,8 +3,8 @@
 Backwards-compatible entry point.
 
 The implementation now lives in the `ai_detect` package. This shim keeps the
-old `python detect.py ...` invocation working. Prefer the installed console
-script `ai-detect` after `pip install .`.
+old shim usable through `uv run --extra xpu python detect.py ...`.
+Prefer the installed console script `houtini-ai` after `make uv-link`.
 """
 
 import sys
