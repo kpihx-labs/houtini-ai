@@ -5,8 +5,8 @@ Two backends share one interface (`score(sentences) -> list[float]`, each a
 0..1 probability that the sentence is AI-written):
 
   * DesklibBackend  — desklib/ai-text-detector-v1.01 (DeBERTa-v3-large) via
-                      transformers + torch. Most accurate; ~1.7 GB one-time
-                      download; CPU by default, CUDA if available.
+                       transformers + torch. Most accurate; ~1.7 GB one-time
+                       download; XPU, CUDA or CPU depending on availability.
   * LightBackend    — onnx-community/tmr-ai-text-detector-ONNX (RoBERTa-base,
                       int8) via onnxruntime. ~126 MB; faster to fetch; can use
                       DirectML / CUDA execution providers when installed.
@@ -70,25 +70,32 @@ def verdict(pct):
 # ---------------------------------------------------------------------------
 
 def resolve_torch_device(pref=None):
-    """Pick a torch device. pref: 'auto' | 'cpu' | 'cuda' (or None -> env/auto).
+    """Pick a torch device: auto, xpu, cuda or cpu.
 
-    Honours the AI_DETECT_DEVICE env var when pref is not given. Default is
-    'auto' = CUDA if a GPU is present, otherwise CPU ("CPU unless a GPU is
-    installed").
+    Honours ``AI_DETECT_DEVICE`` when ``pref`` is absent. Auto prioritizes CUDA,
+    then XPU, then CPU. Explicit unavailable accelerators fail loud on stderr and
+    use CPU rather than silently selecting a different accelerator.
     """
     import torch
 
     pref = (pref or os.environ.get("AI_DETECT_DEVICE") or "auto").lower()
     if pref == "cpu":
         return torch.device("cpu")
+    if pref == "xpu":
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return torch.device("xpu")
+        print("Requested XPU but no Intel XPU device is available - falling back to CPU.", file=sys.stderr)
+        return torch.device("cpu")
     if pref in ("cuda", "gpu"):
         if torch.cuda.is_available():
             return torch.device("cuda")
-        print("Requested GPU but no CUDA device is available — falling back to CPU.",
-              file=sys.stderr)
+        print("Requested CUDA but no CUDA device is available - falling back to CPU.", file=sys.stderr)
         return torch.device("cpu")
-    # auto
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        return torch.device("xpu")
+    return torch.device("cpu")
 
 
 def preload_dependencies():
@@ -306,6 +313,9 @@ def _onnx_providers(ort, device):
     pref = (device or os.environ.get("AI_DETECT_DEVICE") or "auto").lower()
     gpu_order = ["DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider"]
     if pref == "cpu":
+        return ["CPUExecutionProvider"]
+    if pref == "xpu":
+        print("ONNX Runtime XPU execution is unavailable; using CPUExecutionProvider.", file=sys.stderr)
         return ["CPUExecutionProvider"]
     chosen = [p for p in gpu_order if p in available]
     if pref in ("cuda", "gpu") and not chosen:

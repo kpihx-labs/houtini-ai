@@ -1,4 +1,11 @@
-# KpihX-Labs 1.0.3
+# KpihX-Labs 1.1.0
+
+- Add explicit `--device xpu` support for DeBERTa inference.
+- Set `auto` device selection to CUDA, then Intel XPU, then CPU.
+- Verify on the HW1 10-page PDF: XPU produces the same labels as CPU with a
+  maximum probability delta of 0.0001 and is 2.07x faster end-to-end.
+
+## 1.0.3
 
 - Include the unchanged original MIT notice and model-license notices in both archives.
 - Add byte-for-byte distribution-notice tests and exclude editor backups.

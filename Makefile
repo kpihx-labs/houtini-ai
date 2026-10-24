@@ -20,7 +20,7 @@ help:
 	@echo "  check           Lint + type-check"
 	@echo "  clean           Remove .venv and build artifacts"
 
-# Default: XPU on this machine
+# Default project environment: XPU. CLI auto: CUDA, then XPU, then CPU.
 UV_EXTRA ?= xpu
 
 install-cpu: UV_EXTRA = cpu

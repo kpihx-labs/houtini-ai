@@ -14,13 +14,15 @@ server is shipped by this adaptation.
 
 From a checkout, use `make uv-link` (XPU wheels by default) or
 `make uv-link UV_EXTRA=cpu`. Run `houtini-ai document.txt --json`.
+The default CLI device policy is `auto`: CUDA, then Intel XPU, then CPU.
 For a generic CPU installation from PyPI, use
 `uv tool install 'houtini-ai[cpu]' --index https://download.pytorch.org/whl/cpu`.
 For Intel wheels from PyPI, use
 `uv tool install 'houtini-ai[xpu]' --index https://download.pytorch.org/whl/xpu`.
-Explicit wheel selection is necessary: uv's source-index configuration is not
-embedded in wheel dependency metadata. Installing XPU wheels alone does not prove
-that the CLI's device selector actually executes inference on XPU.
+Explicit wheel selection is necessary because uv's source-index configuration is
+not embedded in wheel dependency metadata. With the XPU wheel installed,
+`houtini-ai` auto-selects XPU when CUDA is absent; use `--device cpu`,
+`--device xpu` or `--device cuda` to override it.
 
 `make check` runs network-free tests, compilation, Ruff and Pyright.
 `make uv-build` builds a wheel and sdist, `make uv-publish` publishes them, and
@@ -54,7 +56,7 @@ It isn't Pangram Labs, and no detector is a lie detector - a confident writer wh
 | Does my text leave the machine? | No. Inference is local; the only network call is the first model download. |
 | Which model? | DeBERTa-v3-large (304M), RAID benchmark #1. A 126 MB RoBERTa ONNX alternative ships too. |
 | Can I integrate it into another service? | Invoke the CLI with `--json` or import its Python package; no API daemon is installed. |
-| Does it need a GPU? | No. CPU by default; CUDA used automatically when present. |
+| Does it need a GPU? | No. Auto selects CUDA, then Intel XPU, then CPU. |
 | How accurate is it? | On paired tests, formal phrasing scored 92.6% AI against 0.03% for the same fact written conversationally. Treat it as a signal across a batch, not a verdict on one sentence. |
 
 ## What it tells you
@@ -139,7 +141,7 @@ uv run --extra xpu python scripts/check_env.py
 
 ## Run it
 
-A CUDA GPU helps but isn't required — it defaults to CPU and uses the GPU automatically if one's there.
+An accelerator helps but is not required. The default order is CUDA, then Intel XPU, then CPU.
 
 ```bash
 houtini-ai --file draft.txt              # score a file
@@ -147,7 +149,7 @@ houtini-ai --text "your text here"       # score a string
 houtini-ai --compare a.txt b.txt         # compare two versions
 houtini-ai --json --file draft.txt       # machine-readable output
 houtini-ai --model light --file draft.txt   # small/fast model
-houtini-ai --device cpu --file draft.txt    # force CPU (auto | cpu | cuda)
+houtini-ai --device cpu --file draft.txt    # force CPU (auto | xpu | cpu | cuda)
 ```
 
 Try it on the bundled examples — one obviously machine-written, one not:

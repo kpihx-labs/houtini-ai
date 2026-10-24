@@ -107,8 +107,8 @@ def main(argv=None):
     parser.add_argument("--model", "-m", default=DEFAULT_MODEL, choices=list(MODELS),
                         help=f"Detection model (default: {DEFAULT_MODEL}). "
                              "'light' uses a small ONNX model.")
-    parser.add_argument("--device", "-d", default=None, choices=["auto", "cpu", "cuda"],
-                        help="Compute device (default: auto = GPU if available, else CPU)")
+    parser.add_argument("--device", "-d", default="auto", choices=["auto", "xpu", "cpu", "cuda"],
+                        help="Compute device (default: auto = CUDA, then XPU, then CPU)")
     parser.add_argument("positional", nargs="?", help="File path or text")
 
     args = parser.parse_args(argv)
