@@ -1,4 +1,8 @@
-# KpihX-Labs 1.1.1
+# KpihX-Labs 1.1.2
+
+- Add the standard `houtini-ai --version` CLI introspection flag.
+
+## 1.1.1
 
 - Remove residual MCP branding and the obsolete upstream requirements manifest.
 - Align all public runtime documentation with CUDA, XPU and CPU support.

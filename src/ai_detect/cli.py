@@ -14,6 +14,7 @@ import json
 import os
 import sys
 
+from . import __version__
 from .detector import DEFAULT_MODEL, MIN_WORDS, MODELS, classify_text, verdict
 
 
@@ -99,6 +100,7 @@ def main(argv=None):
         prog="houtini-ai",
         description="Per-sentence AI text detection with pattern diagnostics.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--file", "-f", help="Path to text file")
     parser.add_argument("--text", "-t", help="Text string to analyse")
     parser.add_argument("--compare", "-c", nargs=2, metavar=("FILE1", "FILE2"),
