@@ -1,8 +1,10 @@
 """CLI surface tests that do not load a detection model."""
 
 import json
+from io import StringIO
 
 import pytest
+from rich.console import Console
 from typer.testing import CliRunner
 
 from ai_detect import __version__
@@ -58,3 +60,26 @@ def test_short_scan_json_does_not_load(monkeypatch):
     result = runner.invoke(app, ["scan", "--text", "Bonjour.", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout)["model_ai_pct"] is None
+
+
+@pytest.mark.parametrize("width", [60, 80, 110])
+def test_catalogue_preserves_full_identifiers_at_terminal_width(monkeypatch, width):
+    from ai_detect import cli
+    from ai_detect.models import MODELS
+    stream = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=stream, width=width, force_terminal=False))
+    cli._list_models(False)
+    output = stream.getvalue()
+    assert "…" not in output
+    recovered = {}
+    current = None
+    for line in output.splitlines():
+        cells = [cell.strip() for cell in line.split("│")[1:-1]]
+        if len(cells) != 5:
+            continue
+        if cells[0] in MODELS:
+            current = cells[0]
+            recovered[current] = ""
+        if current is not None:
+            recovered[current] += cells[-1]
+    assert recovered == {key: spec.repo for key, spec in MODELS.items()}

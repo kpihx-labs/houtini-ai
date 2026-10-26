@@ -80,6 +80,8 @@ def print_results(data, label="", sentences=False):
     info = data["model_info"]
     score = data["model_ai_pct"]
     table = Table(title=label or "Detection summary", show_header=False)
+    table.add_column("Field", overflow="fold")
+    table.add_column("Value", overflow="fold")
     for key, value in (
         ("Model", f"{data['model']} - {info['repo']}"),
         ("Languages / device", f"{', '.join(info['languages'])} / {info['device']}"),
@@ -177,8 +179,9 @@ def _list_models(json_output):
         typer.echo(json.dumps(rows, indent=2))
         return
     table = Table(title=f"Houtini models - default {DEFAULT_MODEL}")
-    for header in ("Key", "Languages", "Backend", "Cache", "Full Hub name"):
-        table.add_column(header)
+    table.add_column("Key", min_width=8, no_wrap=True)
+    for header in ("Languages", "Backend", "Cache", "Full Hub name"):
+        table.add_column(header, overflow="fold")
     for row in rows:
         table.add_row(row["key"], ", ".join(row["languages"]), row["backend"],
                       "ready" if row["cached"] else "not cached", row["repo"])

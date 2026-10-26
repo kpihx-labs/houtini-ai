@@ -1,4 +1,10 @@
-# KpihX-Labs 2.0.0
+# KpihX-Labs 2.0.1
+
+- Fold full Hub names and report values in narrow Rich tables instead of truncating
+  with ellipses; recover the exact model identifiers in 60/80/110-column tests.
+- No change to model selection, probabilities or benchmark results.
+
+## KpihX-Labs 2.0.0
 
 - Add declarative language/model registry: en, en-light, fr and default en+fr;
   fr+en is an alias of the bilingual XLM-R checkpoint, not an ensemble.

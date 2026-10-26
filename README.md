@@ -6,7 +6,7 @@
 
 ## KpihX-Labs CLI distribution
 
-### Current multilingual interface (2.0.0)
+### Current multilingual interface (2.0.1)
 
 ```bash
 houtini-ai --help
@@ -31,6 +31,8 @@ Historical direct file/options invocations still route to `scan`; the canonical
 interface is the command tree above. `scan --help` documents input exclusivity,
 output options, devices and examples. Default terminal output is a compact Rich
 summary; `--sentences` opts into every sentence, while JSON always retains them.
+Model tables fold long Hub identifiers instead of shortening them with ellipses,
+including in narrow terminals. JSON retains the exact unwrapped identifiers.
 
 No ML runtimes or weights load on import/help/catalogue operations. Only the
 requested model can download on first inference, and a complete cache loads
