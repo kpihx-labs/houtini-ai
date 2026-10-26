@@ -1,452 +1,123 @@
-"""
-Detection backends and the orchestration layer.
+"""Model-independent orchestration and explicit lazy lifecycle.
 
-Two backends share one interface (`score(sentences) -> list[float]`, each a
-0..1 probability that the sentence is AI-written):
-
-  * DesklibBackend  — desklib/ai-text-detector-v1.01 (DeBERTa-v3-large) via
-                       transformers + torch. Most accurate; ~1.7 GB one-time
-                       download; XPU, CUDA or CPU depending on availability.
-  * LightBackend    — onnx-community/tmr-ai-text-detector-ONNX (RoBERTa-base,
-                      int8) via onnxruntime. ~126 MB; faster to fetch; can use
-                      DirectML / CUDA execution providers when installed.
-
-`classify_text()` splits text into sentences, scores the long ones, attaches
-pattern diagnostics, and returns an aggregate report.
+No model is prefetched or loaded at import. Catalogue data lives in models.py;
+runtime-specific inference lives in backends.py. Diagnostics never change scores.
 """
 
-import importlib
+import math
 import os
-import sys
 import threading
-from typing import Any, cast
+from time import perf_counter
 
-from .patterns import (
-    calculate_sdsl,
-    count_pattern_totals,
-    diagnose_sentence,
-    sent_tokenize,
-)
+from .backends import BACKENDS, resolve_torch_device, synchronize  # noqa: F401
+from .models import DEFAULT_MODEL, MODELS, ensure_model, is_model_cached, model_spec  # noqa: F401
+from .patterns import calculate_sdsl, count_pattern_totals, diagnose_sentence, sent_tokenize
 
-# ---------------------------------------------------------------------------
-# Model registry
-# ---------------------------------------------------------------------------
-
-DESKLIB_MODEL = "desklib/ai-text-detector-v1.01"
-LIGHT_REPO = "onnx-community/tmr-ai-text-detector-ONNX"
-LIGHT_ONNX_FILE = "onnx/model_int8.onnx"
-
-MODELS = {
-    "desklib": {
-        "backend": "desklib",
-        "repo": DESKLIB_MODEL,
-        "label": "desklib/ai-text-detector-v1.01 (DeBERTa-v3-large)",
-        "approx_mb": 1736,
-        # Representative large file — present only once the model is fully fetched.
-        "cache_probe": "model.safetensors",
-    },
-    "light": {
-        "backend": "light",
-        "repo": LIGHT_REPO,
-        "onnx_file": LIGHT_ONNX_FILE,
-        "label": "tmr-ai-text-detector int8 (RoBERTa-base, ONNX)",
-        "approx_mb": 126,
-        "cache_probe": LIGHT_ONNX_FILE,
-    },
-}
-DEFAULT_MODEL = "desklib"
-
-BATCH_SIZE = 8
-MIN_WORDS = 5  # Sentences below this are skipped (headers/fragments — too short to score reliably)
-
-
-def verdict(pct):
-    """Map an overall AI percentage to a plain-English verdict (single source of truth)."""
-    return "LIKELY AI" if pct > 50 else "LIKELY HUMAN" if pct < 40 else "MIXED"
-
-
-# ---------------------------------------------------------------------------
-# Device resolution (torch)
-# ---------------------------------------------------------------------------
-
-def resolve_torch_device(pref=None):
-    """Pick a torch device: auto, xpu, cuda or cpu.
-
-    Honours ``AI_DETECT_DEVICE`` when ``pref`` is absent. Auto prioritizes CUDA,
-    then XPU, then CPU. Explicit unavailable accelerators fail loud on stderr and
-    use CPU rather than silently selecting a different accelerator.
-    """
-    import torch
-
-    pref = (pref or os.environ.get("AI_DETECT_DEVICE") or "auto").lower()
-    if pref == "cpu":
-        return torch.device("cpu")
-    if pref == "xpu":
-        if hasattr(torch, "xpu") and torch.xpu.is_available():
-            return torch.device("xpu")
-        print("Requested XPU but no Intel XPU device is available - falling back to CPU.", file=sys.stderr)
-        return torch.device("cpu")
-    if pref in ("cuda", "gpu"):
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        print("Requested CUDA but no CUDA device is available - falling back to CPU.", file=sys.stderr)
-        return torch.device("cpu")
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        return torch.device("xpu")
-    return torch.device("cpu")
-
-
-def preload_dependencies():
-    """Import the heavy backend libraries in the calling (ideally main) thread.
-
-    Importing numpy / onnxruntime / torch / transformers for the first time can
-    be expensive. Calling this before a batch of local CLI invocations makes later
-    imports cheap ``sys.modules`` cache hits. Missing optional dependencies (for
-    example onnxruntime when ``light`` is not installed) are ignored.
-    """
-    import importlib
-    for mod in ("numpy", "torch", "onnxruntime", "huggingface_hub"):
-        try:
-            importlib.import_module(mod)
-        except Exception:
-            pass
-    # transformers lazy-loads its submodules; touch the exact classes the backends
-    # use so those submodules import now rather than mid-request.
-    try:
-        from transformers import (  # noqa: F401
-            AutoConfig,
-            AutoModel,
-            AutoTokenizer,
-            PreTrainedModel,
-        )
-    except Exception:
-        pass
-
-
-def _announce_download(cfg):
-    """Warn on stderr the first time a model is fetched, so a long download is not mysterious."""
-    print(
-        f"First run with '{cfg['label']}': downloading ~{cfg['approx_mb']} MB "
-        f"from Hugging Face (cached in ~/.cache/huggingface for next time)...",
-        file=sys.stderr,
-    )
-
-
-def prefetch_model(model_name=DEFAULT_MODEL):
-    """Download a model's files into the local HF cache WITHOUT loading it onto a device.
-
-    Lets a background startup warmup make the first detect call fast (no ~1.7 GB
-    wait) while leaving GPU/RAM untouched until detection actually runs — the
-    weights land on disk; the tensors aren't materialised here (so this never
-    contends with other GPU work). No-op if the model is already cached. Never
-    raises: on a network/hub error it logs and returns False, and the first detect
-    call falls back to downloading the normal way.
-    """
-    cfg = MODELS.get(model_name)
-    if not cfg:
-        return False
-    if is_model_cached(model_name):
-        return True
-    try:
-        from huggingface_hub import snapshot_download
-    except Exception:
-        return False
-    # Weights + config + tokenizer only. '*.safetensors' avoids pulling a
-    # duplicate fp32 '.bin' when a repo ships both; the light model needs just its
-    # one ONNX file.
-    patterns = ["*.json", "*.txt", "tokenizer*", "*.model", "*.spm",
-                "vocab*", "merges*", "special_tokens*"]
-    patterns.append(cfg["onnx_file"] if cfg["backend"] == "light" else "*.safetensors")
-    _announce_download(cfg)
-    try:
-        snapshot_download(cfg["repo"], allow_patterns=patterns)
-    except Exception as e:  # network, auth, hub outage — stay non-fatal
-        print(f"ai-detect: background model prefetch failed ({e}); the first "
-              "detect call will download it instead.", file=sys.stderr)
-        return False
-    return is_model_cached(model_name)
-
-
-# ---------------------------------------------------------------------------
-# desklib backend (transformers + torch)
-# ---------------------------------------------------------------------------
-
-class DesklibBackend:
-    """DeBERTa-v3-large detector with a custom mean-pooled sigmoid head."""
-
-    name = "desklib"
-
-    def __init__(self, device=None):
-        import torch
-        import torch.nn as nn
-        from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
-
-        cfg = MODELS["desklib"]
-        self._torch = torch
-        # One inference at a time per loaded model. A single accelerator serializes
-        # work anyway, so sharing it without a lock risks overlapping batches.
-        self._lock = threading.Lock()
-
-        class DesklibAIDetectionModel(PreTrainedModel):
-            config_class = cast(Any, AutoConfig)
-            all_tied_weights_keys = {}
-
-            def __init__(self, config):
-                super().__init__(config)
-                self.model = AutoModel.from_config(config)
-                self.classifier = nn.Linear(config.hidden_size, 1)
-                self.init_weights()
-
-            def forward(self, input_ids, attention_mask=None, labels=None):
-                if attention_mask is None:
-                    attention_mask = torch.ones_like(input_ids)
-                outputs = self.model(input_ids, attention_mask=attention_mask)
-                last_hidden_state = outputs[0]
-                mask = attention_mask.unsqueeze(-1).expand(
-                    last_hidden_state.size()).to(last_hidden_state.dtype)
-                sum_embeddings = torch.sum(last_hidden_state * mask, dim=1)
-                sum_mask = torch.clamp(mask.sum(dim=1), min=1e-9)
-                pooled = sum_embeddings / sum_mask
-                return {"logits": self.classifier(pooled)}
-
-        self.device = resolve_torch_device(device)
-        if not is_model_cached("desklib"):
-            _announce_download(cfg)
-        print("Loading model...", file=sys.stderr)
-        self.tokenizer = AutoTokenizer.from_pretrained(cfg["repo"])
-        dtype = torch.float32
-        if self.device.type == "cuda" and torch.cuda.is_bf16_supported():
-            dtype = torch.bfloat16
-        self.model = cast(Any, DesklibAIDetectionModel.from_pretrained(cfg["repo"], dtype=dtype))
-        self.model.to(self.device).eval()
-        print(f"Model loaded on {self.device} ({cfg['label']})", file=sys.stderr)
-
-    def score(self, sentences):
-        torch = self._torch
-        probs = []
-        with self._lock:
-            for start in range(0, len(sentences), BATCH_SIZE):
-                batch = sentences[start:start + BATCH_SIZE]
-                enc = self.tokenizer(
-                    batch, padding=True, truncation=True, max_length=512,
-                    return_tensors="pt",
-                ).to(self.device)
-                with torch.inference_mode():
-                    logits = self.model(
-                        input_ids=enc["input_ids"],
-                        attention_mask=enc["attention_mask"],
-                    )["logits"]
-                    batch_probs = torch.sigmoid(logits).squeeze(-1).tolist()
-                if isinstance(batch_probs, float):
-                    batch_probs = [batch_probs]
-                probs.extend(batch_probs)
-        return probs
-
-
-# ---------------------------------------------------------------------------
-# light backend (onnxruntime)
-# ---------------------------------------------------------------------------
-
-class LightBackend:
-    """Quantised RoBERTa detector run through onnxruntime (id2label 0=human, 1=ai)."""
-
-    name = "light"
-
-    def __init__(self, device=None):
-        import numpy as np
-        ort = importlib.import_module("onnxruntime")
-        from huggingface_hub import hf_hub_download
-        from transformers import AutoTokenizer
-
-        cfg = MODELS["light"]
-        self._np = np
-        self._lock = threading.Lock()  # see DesklibBackend
-
-        if not is_model_cached("light"):
-            _announce_download(cfg)
-        print("Loading light model (ONNX)...", file=sys.stderr)
-        self.tokenizer = AutoTokenizer.from_pretrained(cfg["repo"])
-        onnx_path = hf_hub_download(cfg["repo"], filename=cfg["onnx_file"])
-
-        providers = _onnx_providers(ort, device)
-        self.session = ort.InferenceSession(onnx_path, providers=providers)
-        self.input_names = {i.name for i in self.session.get_inputs()}
-        print(
-            f"Model loaded via onnxruntime {self.session.get_providers()[0]} "
-            f"({cfg['label']})",
-            file=sys.stderr,
-        )
-
-    def score(self, sentences):
-        np = self._np
-        probs = []
-        with self._lock:
-            for start in range(0, len(sentences), BATCH_SIZE):
-                batch = sentences[start:start + BATCH_SIZE]
-                enc = self.tokenizer(
-                    batch, padding=True, truncation=True, max_length=512,
-                    return_tensors="np",
-                )
-                feeds = {}
-                for name in ("input_ids", "attention_mask", "token_type_ids"):
-                    if name in self.input_names and name in enc:
-                        feeds[name] = enc[name].astype(np.int64)
-                if "token_type_ids" in self.input_names and "token_type_ids" not in feeds:
-                    feeds["token_type_ids"] = np.zeros_like(feeds["input_ids"])
-                logits = self.session.run(None, feeds)[0]
-                # softmax over the 2 classes, take P(class 1 = ai)
-                m = logits.max(axis=1, keepdims=True)
-                exp = np.exp(logits - m)
-                softmax = exp / exp.sum(axis=1, keepdims=True)
-                probs.extend(softmax[:, 1].tolist())
-        return probs
-
-
-def _onnx_providers(ort, device):
-    """Prefer a GPU execution provider when installed and requested; else CPU."""
-    available = ort.get_available_providers()
-    pref = (device or os.environ.get("AI_DETECT_DEVICE") or "auto").lower()
-    gpu_order = ["DmlExecutionProvider", "CUDAExecutionProvider", "ROCMExecutionProvider"]
-    if pref == "cpu":
-        return ["CPUExecutionProvider"]
-    if pref == "xpu":
-        print("ONNX Runtime XPU execution is unavailable; using CPUExecutionProvider.", file=sys.stderr)
-        return ["CPUExecutionProvider"]
-    chosen = [p for p in gpu_order if p in available]
-    if pref in ("cuda", "gpu") and not chosen:
-        print("Requested GPU but no GPU execution provider is installed "
-              "(configure the matching ONNX provider through UV) - using CPU.", file=sys.stderr)
-    return chosen + ["CPUExecutionProvider"]
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-def is_model_cached(model_name):
-    """Whether a model's weights are already in the local HF cache.
-
-    Cheap: probes a single representative large file (desklib's safetensors,
-    the light model's ONNX) rather than walking the whole cache. Returns False
-    for unknown models or if huggingface_hub can't answer.
-    """
-    cfg = MODELS.get(model_name)
-    if not cfg:
-        return False
-    probe = cfg.get("cache_probe") or "config.json"
-    try:
-        from huggingface_hub import try_to_load_from_cache
-        return isinstance(try_to_load_from_cache(cfg["repo"], probe), str)
-    except Exception:
-        return False
-
-
+MIN_WORDS = 5
 _DETECTOR_CACHE = {}
-# Guards construction only. Concurrent callers can otherwise both miss the cache
-# and load a ~1.7 GB copy onto one device. A per-key lock lets a second model load
-# in parallel with the first; only same-key callers queue.
 _DETECTOR_LOCKS = {}
 _DETECTOR_LOCKS_GUARD = threading.Lock()
 
 
-def _device_key(device):
-    """Normalise a device intent so equivalent forms share one cache entry.
+def verdict(pct):
+    return "LIKELY AI" if pct > 50 else "LIKELY HUMAN" if pct < 40 else "MIXED"
 
-    None / unset env / '' all collapse to 'auto', and 'gpu' aliases to 'cuda',
-    so a caller can't load the same model twice for the same device.
-    """
-    d = (device or os.environ.get("AI_DETECT_DEVICE") or "auto").strip().lower()
-    return "cuda" if d == "gpu" else d
+
+def preload_dependencies():
+    """Compatibility no-op: importing every runtime violates lazy selection."""
+
+
+def prefetch_model(model_name=DEFAULT_MODEL):
+    """Explicit opt-in helper only; never invoked by imports or listing."""
+    ensure_model(model_spec(model_name))
+    return True
+
+
+def _device_key(device):
+    key = (device or os.environ.get("AI_DETECT_DEVICE") or "auto").strip().lower()
+    return "cuda" if key == "gpu" else key
 
 
 def get_detector(model=DEFAULT_MODEL, device=None):
-    """Return a cached backend for the given model name ('desklib' or 'light')."""
-    if model not in MODELS:
-        raise ValueError(f"Unknown model '{model}'. Choose from: {', '.join(MODELS)}")
-    key = (model, _device_key(device))
-
-    cached = _DETECTOR_CACHE.get(key)  # fast path: no lock once loaded
-    if cached is not None:
-        return cached
-
+    spec = model_spec(model)
+    key = (spec.key, _device_key(device))
     with _DETECTOR_LOCKS_GUARD:
         lock = _DETECTOR_LOCKS.setdefault(key, threading.Lock())
     with lock:
-        if key not in _DETECTOR_CACHE:  # re-check: another thread may have won
-            backend = MODELS[model]["backend"]
-            if backend == "desklib":
-                _DETECTOR_CACHE[key] = DesklibBackend(device=device)
-            elif backend == "light":
-                _DETECTOR_CACHE[key] = LightBackend(device=device)
-            else:  # pragma: no cover - registry guard
-                raise ValueError(f"Unknown backend '{backend}'")
+        if key not in _DETECTOR_CACHE:
+            factory = BACKENDS.get(spec.backend)
+            if factory is None:
+                raise ValueError(f"No backend registered for {spec.backend}")
+            _DETECTOR_CACHE[key] = factory(spec, device=device)
     return _DETECTOR_CACHE[key]
 
 
-# ---------------------------------------------------------------------------
-# Orchestration
-# ---------------------------------------------------------------------------
-
 def classify_text(text, model=DEFAULT_MODEL, device=None, detector=None):
-    """Classify each sentence and return an aggregate report.
+    """Return sentence scores, denominators, model identity and phase timings.
 
-    Returns a dict with per-sentence results (label, probabilities, diagnostics),
-    the overall model AI %, counts, SDSL text metrics, and pattern totals.
+    model_ai_pct is the mean model probability, not the AI-labelled fraction.
+    Short fragments abstain (null probabilities); empty/short-only input loads
+    no model. Both metrics are descriptive, not an authorship determination.
     """
-    if detector is None:
-        detector = get_detector(model=model, device=device)
-
+    started = perf_counter()
+    spec = model_spec(model)
     sentences = sent_tokenize(text)
-    if not sentences:
-        return {
-            "sentences": [], "model_ai_pct": 0.0, "ai_count": 0, "human_count": 0,
-            "skipped_count": 0, "total": 0, "model": getattr(detector, "name", model),
-            "text_metrics": calculate_sdsl([]), "pattern_totals": {},
-        }
-
-    results: list[Any] = [None] * len(sentences)
-    scoreable, scoreable_indices = [], []
-    for i, s in enumerate(sentences):
-        if len(s.split()) < MIN_WORDS:
-            results[i] = {
-                "sentence": s, "label": "Skipped", "confidence": 0.0,
-                "ai_prob": 0.0, "human_prob": 0.0, "diagnostics": [],
-            }
+    results = []
+    scoreable, indices = [], []
+    for sentence in sentences:
+        if len(sentence.split()) < MIN_WORDS:
+            results.append({"sentence": sentence, "label": "Skipped", "confidence": None,
+                            "ai_prob": None, "human_prob": None, "diagnostics": [],
+                            "skip_reason": f"fewer than {MIN_WORDS} whitespace words"})
         else:
-            scoreable.append(s)
-            scoreable_indices.append(i)
+            indices.append(len(results))
+            scoreable.append(sentence)
+            results.append(None)
 
-    ai_count = 0
-    all_probs = []
+    load_seconds = score_seconds = 0.0
+    probs = []
     if scoreable:
+        t = perf_counter()
+        if detector is None:
+            detector = get_detector(spec.key, device)
+        load_seconds = perf_counter() - t
+        synchronize(getattr(detector, "device", None))
+        t = perf_counter()
         probs = detector.score(scoreable)
-        for s, ai_prob, idx in zip(scoreable, probs, scoreable_indices, strict=True):
-            ai_prob = float(ai_prob)
-            human_prob = 1.0 - ai_prob
-            label = "AI" if ai_prob >= 0.5 else "Human"
-            if label == "AI":
-                ai_count += 1
-            all_probs.append(ai_prob)
-            results[idx] = {
-                "sentence": s,
-                "label": label,
-                "confidence": round(max(ai_prob, human_prob), 4),
-                "ai_prob": round(ai_prob, 4),
-                "human_prob": round(human_prob, 4),
-                "diagnostics": diagnose_sentence(s),
+        synchronize(getattr(detector, "device", None))
+        score_seconds = perf_counter() - t
+        if len(probs) != len(scoreable):
+            raise ValueError("Backend score count does not match sentence count")
+        for sentence, prob, index in zip(scoreable, probs, indices, strict=True):
+            prob = float(prob)
+            if not math.isfinite(prob) or not 0 <= prob <= 1:
+                raise ValueError(f"Invalid model probability: {prob}")
+            results[index] = {
+                "sentence": sentence, "label": "AI" if prob >= 0.5 else "Human",
+                "confidence": round(max(prob, 1-prob), 4), "ai_prob": round(prob, 4),
+                "human_prob": round(1-prob, 4),
+                "diagnostics": diagnose_sentence(sentence, languages=spec.languages),
             }
-
-    model_ai_pct = round(sum(all_probs) / len(all_probs) * 100, 1) if all_probs else 0.0
+    ai_count = sum(p >= 0.5 for p in probs)
+    metadata = {
+        "repo": spec.repo, "languages": list(spec.languages), "backend": spec.backend,
+        "revision_requested": spec.revision, "caveat": spec.caveat,
+        "device": str(getattr(detector, "device", "not loaded")),
+        "resolved_revision": getattr(getattr(detector, "path", None), "name", None),
+        "downloaded_this_load": getattr(detector, "downloaded", False),
+    }
     return {
-        "sentences": results,
-        "model_ai_pct": model_ai_pct,
-        "ai_count": ai_count,
-        "human_count": len(scoreable) - ai_count,
-        "skipped_count": len(sentences) - len(scoreable),
-        "total": len(sentences),
-        "model": getattr(detector, "name", model),
-        "text_metrics": calculate_sdsl(scoreable),
-        "pattern_totals": count_pattern_totals(results),
+        "sentences": results, "model_ai_pct": round(sum(probs)/len(probs)*100, 1) if probs else None,
+        "ai_sentence_pct": round(ai_count/len(probs)*100, 1) if probs else None,
+        "ai_count": ai_count, "human_count": len(probs)-ai_count,
+        "skipped_count": len(sentences)-len(probs), "scored_count": len(probs),
+        "total": len(sentences), "model": spec.key, "model_info": metadata,
+        "text_metrics": calculate_sdsl(scoreable), "pattern_totals": count_pattern_totals(results),
+        "token_windows": getattr(detector, "window_count", len(probs)),
+        "timings": {"load_seconds": round(load_seconds, 6),
+                    "score_seconds": round(score_seconds, 6),
+                    "total_seconds": round(perf_counter()-started, 6)},
+        "caveats": ["Scores are not proof of authorship.",
+                    "Diagnostics are lexical style observations, not causal model explanations.",
+                    "Short sentences abstain; long sentences use averaged token-window scores."],
     }

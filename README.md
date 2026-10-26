@@ -6,6 +6,55 @@
 
 ## KpihX-Labs CLI distribution
 
+### Current multilingual interface (2.0.0)
+
+```bash
+houtini-ai --help
+houtini-ai --help-all                 # recursive help, examples and output contracts
+houtini-ai models                     # offline catalogue and cache readiness
+houtini-ai models info fr --json
+houtini-ai scan draft.txt --model fr --json
+houtini-ai compare first.txt second.txt --model fr+en
+```
+
+| Key | Languages | Full upstream model name | Runtime |
+|---|---|---|---|
+| `en` | English | `desklib/ai-text-detector-v1.01` | PyTorch, custom sigmoid head |
+| `en-light` | English | `onnx-community/tmr-ai-text-detector-ONNX` | ONNX int8 |
+| `fr` | French | `almanach/camemberta-chatgptdetect-noisy` | PyTorch, binary classifier |
+| `en+fr` (default) | English, French | `almanach/xlmr-chatgptdetect-noisy` | PyTorch, binary classifier |
+
+`fr+en` aliases the same bilingual checkpoint as `en+fr`; it is not an ensemble.
+Version 2.0 marks the intentional model-key and default-selection changes.
+The former model keys `desklib` and `light` are replaced by `en` and `en-light`.
+Historical direct file/options invocations still route to `scan`; the canonical
+interface is the command tree above. `scan --help` documents input exclusivity,
+output options, devices and examples. Default terminal output is a compact Rich
+summary; `--sentences` opts into every sentence, while JSON always retains them.
+
+No ML runtimes or weights load on import/help/catalogue operations. Only the
+requested model can download on first inference, and a complete cache loads
+locally without a Hub request. Full names, language coverage and cache manifests
+are declared in `models.py`; adding a standard HF binary classifier requires one
+`ModelSpec`, not another CLI branch. Runtime adapters live in `backends.py`.
+
+Reports distinguish the mean model score (`model_ai_pct`) from the percentage
+of sentences labelled AI (`ai_sentence_pct`). Short fragments abstain with null
+probabilities; long sentences are scored over non-overlapping token windows,
+then averaged per sentence, rather than silently truncating at 512 tokens.
+JSON records snapshot revision, actual device and load/scoring/total seconds.
+Scoring time includes tokenization, transfers and synchronized inference; process
+wall time includes CLI/import overhead and is measured separately by benchmarks.
+
+French diagnostics are language-scoped style observations, not validated causal
+explanations of a model's decisions. The two Almanach checkpoints date from 2023
+and were trained on HC3 ChatGPT data; literary French and modern generators are
+out of distribution. The French fine-tune card does not declare a licence (the
+base model's MIT licence does not automatically settle its fine-tune terms).
+Neither their scores nor Desklib's scores establish authorship. Retained upstream
+examples and the two-model discussion below describe the historical EN interface,
+not the current default or an accuracy guarantee.
+
 This MIT-licensed adaptation retains Richard Baxter / Houtini's implementation and
 history: https://github.com/houtini-ai/ai-detect.
 The PyPI distribution and executable are `houtini-ai`; the Python package is `ai_detect`.
@@ -81,7 +130,7 @@ Each flag comes with a plain-English rewrite suggestion, so the tool doubles as 
               ^ formal_transition: 'Additionally' — cut it, or use 'And' / 'Plus'
 ```
 
-## Two detectors
+## Historical two-detector interface (through 1.1.2)
 
 | | `desklib` (default) | `light` (`--model light`) |
 |---|---|---|

@@ -1,6 +1,6 @@
 [project]
 name        = "houtini-ai"
-version     = "1.1.2"
+version     = "2.0.0"
 description = "Per-sentence AI-text detection with pattern diagnostics — CLI."
 authors     = [{ name = "Richard Baxter", email = "richard@houtini.com" }]
 readme      = "README.md"
@@ -9,6 +9,8 @@ requires-python = ">=3.12"
 license-files = ["LICENSE"]
 
 dependencies = [
+    "typer>=0.16",
+    "rich>=13.9",
     "huggingface-hub>=2.2.0",
     "numpy>=2.5.4",
     "transformers>=5.20.2",

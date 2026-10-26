@@ -1,4 +1,18 @@
-# KpihX-Labs 1.1.2
+# KpihX-Labs 2.0.0
+
+- Add declarative language/model registry: en, en-light, fr and default en+fr;
+  fr+en is an alias of the bilingual XLM-R checkpoint, not an ensemble.
+- Separate model lifecycle, inference adapters and report orchestration. Complete
+  local caches make no network request; imports/help/listing never pull weights.
+- Add Typer/Rich scan, compare, models list/info and recursive --help-all with
+  parameter help and concrete examples. Retain direct file/options invocations.
+- Report distinct mean scores, AI-label fractions, abstentions and phase timings.
+  Window long sentences rather than silently dropping their tail.
+- Add French-scoped style diagnostics without changing neural probabilities.
+- Add offline lifecycle/CLI/overflow/metric tests and a reproducible two-book
+  benchmark script retaining every JSON, stderr, input hash and wall time.
+
+## KpihX-Labs 1.1.2
 
 - Add the standard `houtini-ai --version` CLI introspection flag.
 

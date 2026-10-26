@@ -358,12 +358,14 @@ wheels = [
 
 [[package]]
 name = "houtini-ai"
-version = "1.1.2"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "numpy" },
+    { name = "rich" },
     { name = "transformers" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -407,6 +409,7 @@ requires-dist = [
     { name = "huggingface-hub", marker = "extra == 'xpu'", specifier = ">=0.34.4" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "onnxruntime", marker = "extra == 'light'", specifier = ">=1.17" },
+    { name = "rich", specifier = ">=13.9" },
     { name = "safetensors", marker = "extra == 'cuda'", specifier = ">=0.6.2" },
     { name = "safetensors", marker = "extra == 'xpu'", specifier = ">=0.6.2" },
     { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.8", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "houtini-ai", extra = "cpu" } },
@@ -417,6 +420,7 @@ requires-dist = [
     { name = "torchvision", marker = "extra == 'xpu'", specifier = ">=0.23", index = "https://download.pytorch.org/whl/xpu", conflict = { package = "houtini-ai", extra = "xpu" } },
     { name = "transformers", specifier = ">=5.20.2" },
     { name = "triton-xpu", marker = "extra == 'xpu'", specifier = ">=3.8.0", index = "https://download.pytorch.org/whl/xpu", conflict = { package = "houtini-ai", extra = "xpu" } },
+    { name = "typer", specifier = ">=0.16" },
 ]
 provides-extras = ["cpu", "xpu", "cuda", "light"]
 

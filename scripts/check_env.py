@@ -42,13 +42,15 @@ def main():
         ort = importlib.import_module("onnxruntime")
         line("onnxruntime", f"{ort.__version__}  providers={ort.get_available_providers()}")
     except ImportError:
-        line("onnxruntime", "not installed (only needed for --model light)")
+        line("onnxruntime", "not installed (only needed for --model en-light)")
 
     line("Interface", "CLI only")
 
     print("-" * 40)
-    print("Default model : desklib/ai-text-detector-v1.01 (~1.7 GB, first run downloads it)")
-    print("Light model   : onnx-community/tmr-ai-text-detector-ONNX (~126 MB)")
+    from ai_detect.models import DEFAULT_MODEL, catalogue
+    print(f"Default selection: {DEFAULT_MODEL}. Only requested missing models download.")
+    for entry in catalogue():
+        line(entry["key"], f"{entry['repo']} ({','.join(entry['languages'])}; cached={entry['cached']})")
 
 
 if __name__ == "__main__":

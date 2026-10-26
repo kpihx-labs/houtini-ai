@@ -107,7 +107,7 @@ FLAGGY_ADVERBS = {
 }
 
 
-def diagnose_sentence(text):
+def _diagnose_english(text):
     """Check a sentence for patterns that tend to trigger AI detection.
 
     Returns a list of {pattern, match, suggestion} findings.
@@ -188,6 +188,45 @@ def diagnose_sentence(text):
                 "suggestion": suggestion,
             })
 
+    return findings
+
+
+# Descriptive style markers only, not validated evidence of AI authorship.
+# Add future languages by registering another language-specific callable.
+FRENCH_MARKERS = {
+    "formal_transition": (
+        "de plus", "en outre", "par ailleurs", "en conclusion", "néanmoins",
+        "toutefois", "il convient de", "il est important de noter", "en somme",
+    ),
+    "formal_verb": ("met en évidence", "permet de", "facilite", "souligne"),
+    "vague_abstraction": ("de nombreux", "divers aspects", "un large éventail"),
+}
+
+
+def _diagnose_french(text):
+    normalized = " ".join(text.casefold().replace("’", "'").split())
+    findings = []
+    for category, phrases in FRENCH_MARKERS.items():
+        for phrase in phrases:
+            if re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", normalized):
+                findings.append({
+                    "pattern": category, "match": phrase,
+                    "suggestion": "French style marker; inspect in context, not evidence of AI.",
+                })
+    return findings
+
+
+DIAGNOSTICS = {"en": _diagnose_english, "fr": _diagnose_french}
+
+
+def diagnose_sentence(text, languages=("en",)):
+    """Language-scoped lexical annotations, independent of model probabilities."""
+    findings = []
+    for language in languages:
+        analyze = DIAGNOSTICS.get(language)
+        if analyze is not None:
+            findings.extend({**f, "language": language, "evidence": "lexical_style_only"}
+                            for f in analyze(text))
     return findings
 
 
